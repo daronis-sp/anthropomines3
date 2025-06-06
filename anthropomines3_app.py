@@ -4,50 +4,42 @@ import streamlit as st
 from datetime import datetime
 
 def parse_date(date_str):
-    """Parse date from string in either dd/mm/yyyy or mm/yyyy format."""
     try:
         return datetime.strptime(date_str, "%d/%m/%Y")
     except ValueError:
         return datetime.strptime(date_str, "%m/%Y")
 
 def calculate_man_months(start_date, end_date):
-    """Calculate man-months between two dates."""
+    start_date = parse_date(start_date)
+    end_date = parse_date(end_date)
     delta = end_date - start_date
     return delta.days / 30
 
 def merge_periods(periods):
-    """Merge overlapping periods and calculate total man-months."""
+    if not periods:
+        return 0
     periods = sorted(periods, key=lambda x: x[0])
-    merged_periods = []
-    current_start, current_end = periods[0]
-
-    for start, end in periods[1:]:
-        if start <= current_end:
-            current_end = max(current_end, end)
+    merged = [periods[0]]
+    for current in periods[1:]:
+        last = merged[-1]
+        if current[0] <= last[1]:
+            merged[-1] = (last[0], max(last[1], current[1]))
         else:
-            merged_periods.append((current_start, current_end))
-            current_start, current_end = start, end
-
-    merged_periods.append((current_start, current_end))
-    return sum(calculate_man_months(start, end) for start, end in merged_periods)
+            merged.append(current)
+    total_man_months = sum((end - start).days / 30 for start, end in merged)
+    return total_man_months
 
 def process_excel(file):
     df = pd.read_excel(file, engine='openpyxl')
     man_months = []
-
     for index, row in df.iterrows():
         periods = row.dropna()
         period_list = []
-
         for period in periods:
             start_date, end_date = period.split('-')
-            start_date = parse_date(start_date.strip())
-            end_date = parse_date(end_date.strip())
-            period_list.append((start_date, end_date))
-
+            period_list.append((parse_date(start_date.strip()), parse_date(end_date.strip())))
         total_man_months = merge_periods(period_list)
         man_months.append(total_man_months)
-
     df['Ανθρωπομήνες'] = man_months
     df.loc['Σύνολο'] = df.sum(numeric_only=True)
     return df
@@ -60,4 +52,3 @@ if uploaded_file is not None:
     st.write(processed_df)
     processed_df.to_excel("processed_file.xlsx", index=False)
     st.download_button(label="Κατέβασε το νέο αρχείο", data=open("processed_file.xlsx", "rb"), file_name="processed_file.xlsx")
-    
